@@ -100,6 +100,11 @@ class PageTests(unittest.TestCase):
         with self.assertRaises(CheckinError):
             SignPage('<title>Just a moment...</title>').require_login()
 
+    def test_verification_page_reports_human_verification(self):
+        verification = SignPage('<title>验证页面</title><p>请点击下面的按钮验证</p><button>点击进行验证</button>')
+        with self.assertRaisesRegex(CheckinError, "人工验证"):
+            verification.require_login()
+
 
 class ExecutionTests(unittest.TestCase):
     def test_already_signed_does_not_submit(self):
@@ -140,6 +145,16 @@ class ExecutionTests(unittest.TestCase):
         client = FakeClient([UNSIGNED, UNSIGNED, UNSIGNED, UNSIGNED], error=CheckinError("网站拒绝访问"))
         with self.assertRaisesRegex(CheckinError, "网站拒绝访问"):
             checkin(client)
+
+    @patch("checkin.time.sleep")
+    def test_http_200_verification_response_is_actionable_failure(self, _):
+        client = FakeClient(
+            [UNSIGNED, UNSIGNED, UNSIGNED, UNSIGNED],
+            response='<title>验证页面</title><button>点击进行验证</button>',
+        )
+        with self.assertRaisesRegex(CheckinError, "仅提供 Cookie 无法完成当前签到"):
+            checkin(client)
+        self.assertEqual(len(client.calls), 1)
 
 
 class CredentialTests(unittest.TestCase):

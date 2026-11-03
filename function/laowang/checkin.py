@@ -131,7 +131,12 @@ class SignPage:
         self.visible_text = " ".join(self.parser.text)
         self.sign_text = " ".join(self.parser.sign_text)
 
+    def require_no_verification(self):
+        if re.search(r"点击进行验证|请点击下面的按钮验证|请完成(?:人机验证|验证码)", self.visible_text):
+            raise CheckinError("签到接口要求人工验证，请在浏览器完成验证；仅提供 Cookie 无法完成当前签到，脚本已停止。")
+
     def require_login(self):
+        self.require_no_verification()
         uid = re.search(r"\bdiscuz_uid\s*=\s*['\"]?(\d+)", self.source)
         if uid and int(uid.group(1)) > 0:
             return
@@ -236,7 +241,8 @@ def checkin(client: ForumClient, *, check_only: bool = False) -> str:
     # 有副作用的请求只提交一次；即使响应超时，也通过重新读取页面判断。
     action_error = None
     try:
-        client.get(action, ajax=True, attempts=1)
+        response = client.get(action, ajax=True, attempts=1)
+        SignPage(response).require_no_verification()
     except CheckinError as error:
         action_error = error
     for attempt in range(3):
