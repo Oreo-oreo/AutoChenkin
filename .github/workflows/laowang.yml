@@ -1,0 +1,64 @@
+name: 老王论坛每日签到
+
+on:
+  schedule:
+    # UTC 01:17 / 09:17，即北京时间每天 09:17 和 17:17（补查）。
+    - cron: '17 1,9 * * *'
+  workflow_dispatch:
+    inputs:
+      check_only:
+        description: '仅检查登录状态，不提交签到'
+        type: boolean
+        default: false
+  push:
+    paths:
+      - '.github/workflows/laowang.yml'
+      - 'function/laowang/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: laowang-checkin
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: 检查脚本
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: 运行离线回归检查
+        run: python -m unittest discover -s function/laowang -p 'test_*.py' -v
+
+  checkin:
+    name: 执行签到
+    needs: verify
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: 签到并重新读取页面确认
+        env:
+          LAOWANG_COOKIE: ${{ secrets.LAOWANG_COOKIE }}
+          LAOWANG_USER_AGENT: ${{ secrets.LAOWANG_USER_AGENT }}
+          CHECK_ONLY: ${{ inputs.check_only }}
+        shell: bash
+        run: |
+          if [ "$CHECK_ONLY" = 'true' ]; then
+            python function/laowang/checkin.py --check-only
+          else
+            python function/laowang/checkin.py
+          fi
